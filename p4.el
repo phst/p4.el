@@ -201,14 +201,6 @@ flags."
     :type 'function
     :group 'p4))
 
-(defcustom p4-require-p4-port t
-  "Controls whether `p4-update-status' requires the P4PORT variable to be set.
-If this is t, `p4-update-status' will only consider directories
-in which the P4PORT Perforce variable is set.  If it is nil, all
-directories will be considered."
-  :type 'boolean
-  :group 'p4)
-
 (defgroup p4-faces nil "Perforce VC System Faces." :group 'p4)
 
 (defface p4-description-face '((t))
