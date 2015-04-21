@@ -61,6 +61,7 @@
 (require 'comint) ; comint-check-proc
 (require 'dired) ; dired-get-filename
 (require 'diff-mode) ; diff-font-lock-defaults, ...
+(require 'easy-mmode) ; define-minor-mode
 (require 'ps-print) ; ps-print-ensure-fontified
 (eval-when-compile (require 'cl)) ; defstruct, loop, dolist, lexical-let, ...
 
@@ -144,11 +145,6 @@ P4PORT and P4USER and set from the current Perforce settings."
                 (const :tag "Fetch password from Python keyring.\n\n\tFor each Perforce account, run:\n\t    python -c \"import keyring,sys;keyring.set_password(*sys.argv[1:])\" \\\n\t        P4PORT P4USER PASSWORD\n\treplacing P4PORT with the Perforce server setting, P4PORT with the\n\tPerforce user name, and PASSWORD with the password.\n"
                        "python -c \"import keyring, sys; print(keyring.get_password(*sys.argv[1:3]))\" \"$P4PORT\" \"$P4USER\"")
                 (string :tag "Run custom command"))
-  :group 'p4)
-
-(defcustom p4-mode-hook nil
-  "Hook run by `p4-mode'."
-  :type 'hook
   :group 'p4)
 
 (defcustom p4-form-mode-hook nil
@@ -296,7 +292,6 @@ directories will be considered."
   :group 'p4-faces)
 
 ;; Local variables in all buffers.
-(defvar p4-mode nil "P4 minor mode.")
 (defvar p4-vc-revision nil
   "Perforce revision to which this buffer's file is synced.")
 (defvar p4-vc-status nil
@@ -349,7 +344,7 @@ commit command.")
 ;; Local variables in P4 depot buffers.
 (defvar p4-default-directory nil "Original value of default-directory.")
 
-(dolist (var '(p4-mode p4-vc-revision p4-vc-status
+(dolist (var '(p4-vc-revision p4-vc-status
                p4-process-args p4-process-callback
                p4-process-buffers p4-process-pending
                p4-process-after-show p4-process-auto-login
@@ -363,15 +358,17 @@ commit command.")
 
 ;;; P4 minor mode:
 
-(defvar p4-minor-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map "\C-x\C-q" 'p4-toggle-read-only)
-    map)
-  "Keymap for P4 minor mode")
-(fset 'p4-minor-map p4-minor-map)
-(add-to-list 'minor-mode-alist '(p4-mode p4-mode))
-(add-to-list 'minor-mode-map-alist '(p4-mode . p4-minor-map))
-
+(define-minor-mode p4-mode
+  "Minor mode for files in a Perforce client."
+  ;; `p4-update-mode' below sets the variable `p4-mode' to a description of the
+  ;; file's Perforce state.
+  :lighter p4-mode
+  :keymap (make-sparse-keymap)
+  ;; The variable `p4-mode' is reused as lighter, but the default code emitted
+  ;; by `define-minor-mode' sets it to nil or t.  Reset it if it's a string so
+  ;; that it actually shows up in the modeline.
+  (when (stringp p4-mode)
+    (setq p4-mode arg)))
 
 ;;; Keymap:
 
@@ -580,6 +577,14 @@ client settings."
    (p4-with-set-output
      (loop while (re-search-forward "^P4[A-Z]+=\\S-+" nil t)
            collect (match-string 0)))
+   ;; Default values for P4PORT and P4USER may be needed by
+   ;; p4-password-source even if not supplied by "p4 set". See:
+   ;; http://www.perforce.com/perforce/doc.current/manuals/cmdref/P4PORT.html
+   ;; http://www.perforce.com/perforce/doc.current/manuals/cmdref/P4USER.html
+   (list
+    "P4PORT=perforce:1666"
+    (concat "P4USER="
+            (or (getenv "USER") (getenv "USERNAME") (user-login-name))))
    process-environment))
 
 (defvar p4-coding-system-alist
@@ -634,7 +639,8 @@ client settings."
 
 (defun p4-current-server-port ()
   "Return the current Perforce port."
-  (p4-current-setting "P4PORT"))
+  ;; http://www.perforce.com/perforce/doc.current/manuals/cmdref/P4PORT.html
+  (or (p4-current-setting "P4PORT") "perforce:1666"))
 
 (defvar p4-server-version-cache nil
   "Association list mapping P4PORT to Perforce server version on that port.")
@@ -1362,9 +1368,8 @@ number is not known or not applicable."
                         (depot (format " P4:%s" status))
                         ((add branch edit integrate) (format " P4:%s" status))
                         (t nil))))
-        (when (and new-mode (not p4-mode))
-          (run-hooks 'p4-mode-hook))
-        (setq p4-mode new-mode)))))
+        (unless (string-equal p4-mode new-mode)
+          (p4-mode new-mode))))))
 
 (defun p4-update-status-sentinel-2 (process message)
   (let ((buffer (process-buffer process)))
@@ -1472,11 +1477,9 @@ for the current Perforce settings."
                (not p4-default-directory)
                (file-accessible-directory-p default-directory))
       (p4-with-set-output
-        (when (or (not p4-require-p4-port)
-                  (save-excursion (re-search-forward "^P4PORT=" nil t)))
-          (let ((set (buffer-substring-no-properties (point-min) (point-max))))
-            (p4-update-status-pending-add set b force)))
-      (p4-maybe-start-update-statuses)))))
+        (let ((set (buffer-substring-no-properties (point-min) (point-max))))
+          (p4-update-status-pending-add set b force)))
+      (p4-maybe-start-update-statuses))))
 
 (defun p4-refresh-buffer (&optional force verify-modtime)
   "Refresh the current buffer if it is under Perforce control and
@@ -1660,7 +1663,7 @@ twice in the expansion."
   nil
   (p4-call-command cmd args
    :callback (lambda ()
-               (p4-regexp-create-links "^Branch \\([^ ]+\\).*\n" 'branch
+               (p4-regexp-create-links "^Branch \\([^ \t\n]+\\).*\n" 'branch
                                        "Describe branch"))))
 
 (defun p4-change-update-form (buffer new-status re)
@@ -1717,7 +1720,7 @@ twice in the expansion."
   nil
   (p4-call-command cmd args
    :callback (lambda ()
-               (p4-regexp-create-links "^Client \\([^ ]+\\).*\n" 'client
+               (p4-regexp-create-links "^Client \\([^ \t\n]+\\).*\n" 'client
                                        "Describe client"))))
 
 (defp4cmd* delete
@@ -1975,7 +1978,7 @@ continuation lines); show it in a pop-up window otherwise."
   nil
   (p4-call-command cmd args
    :callback (lambda ()
-               (p4-regexp-create-links "^Label \\([^ ]+\\).*\n" 'label
+               (p4-regexp-create-links "^Label \\([^ \t\n]+\\).*\n" 'label
                                        "Describe label"))))
 
 (defp4cmd p4-labelsync (&rest args)
@@ -2283,7 +2286,7 @@ return a buffer listing those files. Otherwise, return NIL."
   (interactive (p4-read-args* "p4 users: " "" 'user))
   (p4-call-command "users" args
    :callback (lambda ()
-               (p4-regexp-create-links "^\\([^ ]+\\).*\n" 'user
+               (p4-regexp-create-links "^\\([^ \t\n]+\\).*\n" 'user
                                        "Describe user"))))
 
 (defp4cmd* where
@@ -2316,7 +2319,7 @@ return a buffer listing those files. Otherwise, return NIL."
     (while (re-search-forward (concat
                                "^\\(\\.\\.\\. #\\([1-9][0-9]*\\) \\)?[Cc]hange "
                                "\\([1-9][0-9]*\\) \\([a-z]+\\)?.*on.*by "
-                               "\\([^ @]+\\)@\\([^ \n]+\\).*\n"
+                               "\\([^ @\n]+\\)@\\([^ \n]+\\).*\n"
                                "\\(\\(?:\n\\|[ \t].*\n\\)*\\)") nil t)
       (let* ((rev-match 2)
              (rev (and (match-string rev-match)
@@ -2381,8 +2384,8 @@ change numbers, and make the change numbers clickable."
   (save-excursion
     (let ((depot-regexp
            (if print-buffer
-               "\\(^\\)\\(//[^/@# ][^/@#]*/[^@#]+#[1-9][0-9]*\\) - "
-             "^\\(\\.\\.\\. [^/\n]*\\|==== \\)?\\(//[^/@# ][^/@#]*/[^#\n]*\\(?:#[1-9][0-9]*\\)?\\)")))
+               "\\(^\\)\\(//[^/@# \n][^/@#\n]*/[^@#\n]+#[1-9][0-9]*\\) - "
+             "^\\(\\.\\.\\. [^/\n]*\\|==== \\)?\\(//[^/@# \n][^/@#\n]*/[^#\n]*\\(?:#[1-9][0-9]*\\)?\\)")))
       (goto-char (point-min))
       (while (re-search-forward depot-regexp nil t)
         (let* ((p4-depot-file (match-string-no-properties 2))
@@ -2405,7 +2408,7 @@ first line of outputput from \"p4 print\". If the optional
 argument DELETE-FILESPEC is non-NIL, remove the first line."
   (save-excursion
     (goto-char (point-min))
-    (when (looking-at "^//[^#@]+/\\([^/#@]+\\).*\n")
+    (when (looking-at "^//[^#@\n]+/\\([^/#@\n]+\\).*\n")
       (let ((buffer-file-name (match-string 1))
             (first-line (match-string-no-properties 0))
             (inhibit-read-only t))
@@ -2428,8 +2431,8 @@ argument DELETE-FILESPEC is non-NIL, remove the first line."
     (p4-mark-depot-list-buffer print-buffer)
     (let ((depot-regexp
            (if print-buffer
-               "^\\(//[^/@# ][^/@#]*/\\)[^@#]+#[1-9][0-9]* - "
-             "^\\(//[^/@# ][^/@#]*/\\)")))
+               "^\\(//[^/@# \n][^/@#\n]*/\\)[^@#\n]+#[1-9][0-9]* - "
+             "^\\(//[^/@# \n][^/@#\n]*/\\)")))
       (goto-char (point-min))
       (while (re-search-forward depot-regexp nil t)
         (let ((link-client-name (get-char-property (match-end 1)
@@ -2498,7 +2501,7 @@ argument DELETE-FILESPEC is non-NIL, remove the first line."
       (p4-find-change-numbers (point-min) stop))
 
     (goto-char (point-min))
-    (when (looking-at "^Change [1-9][0-9]* by \\([^ @]+\\)@\\([^ \n]+\\)")
+    (when (looking-at "^Change [1-9][0-9]* by \\([^ @\n]+\\)@\\([^ \n]+\\)")
       (p4-create-active-link-group 1 `(user ,(match-string-no-properties 1))
                                    "Describe user")
       (p4-create-active-link-group 2 `(client ,(match-string-no-properties 2))
@@ -2508,7 +2511,7 @@ argument DELETE-FILESPEC is non-NIL, remove the first line."
   (let ((inhibit-read-only t))
     (save-excursion
       (goto-char (point-min))
-      (while (re-search-forward "^\\(\\S-+\\) fixed by change \\([0-9]+\\) on [0-9/]+ by \\([^ @]+\\)@\\([^ \n]+\\)" nil t)
+      (while (re-search-forward "^\\(\\S-+\\) fixed by change \\([0-9]+\\) on [0-9/]+ by \\([^ @\n]+\\)@\\([^ \n]+\\)" nil t)
         (p4-create-active-link-group 1 `(job ,(match-string-no-properties 1)))
         (p4-create-active-link-group 2 `(change ,(string-to-number (match-string 2))))
         (p4-create-active-link-group 3 `(user ,(match-string-no-properties 3)))
@@ -2528,9 +2531,9 @@ argument DELETE-FILESPEC is non-NIL, remove the first line."
 (defconst p4-blame-change-regex
   (concat "^\\.\\.\\. #"     "\\([1-9][0-9]*\\)"   ; revision
           "\\s-+change\\s-+" "\\([1-9][0-9]*\\)"   ; change
-          "\\s-+"            "\\([^ \t]+\\)"       ; type
-          "\\s-+on\\s-+"     "\\([^ \t]+\\)"       ; date
-          "\\s-+by\\s-+"     "\\([^ \t]+\\)"       ; author
+          "\\s-+"            "\\([^ \t\n]+\\)"       ; type
+          "\\s-+on\\s-+"     "\\([^ \t\n]+\\)"       ; date
+          "\\s-+by\\s-+"     "\\([^ \t\n]+\\)"       ; author
           "@.*\n\n\t\\(.*\\)"))                    ; description
 
 (defconst p4-blame-revision-regex
@@ -2897,7 +2900,7 @@ and update the cache accordingly."
 (defun p4-arg-completion-builder (completion)
   (lexical-let ((completion completion))
     (lambda (string predicate action)
-      (string-match "^\\(\\(?:.* \\)?\\)\\([^ ]*\\)$" string)
+      (string-match "^\\(\\(?:.* \\)?\\)\\([^ \t\n]*\\)$" string)
       (let* ((first (match-string 1 string))
              (remainder (match-string 2 string))
              (f (p4-completion-completion-fn completion))
@@ -3293,7 +3296,7 @@ is NIL, otherwise return NIL."
         (if (match-string 3)
             (let ((args (list "where" (match-string 2))))
               (p4-with-temp-buffer args
-                (when (looking-at "//[^ ]+ //[^ ]+ \\(.*\\)")
+                (when (looking-at "//[^ \n]+ //[^ \n]+ \\(.*\\)")
                   (find-file (match-string 1)))))
           (p4-depot-find-file (match-string 1)))))))
 
@@ -3365,7 +3368,7 @@ is NIL, otherwise return NIL."
 
 (defvar p4-form-font-lock-keywords
   '(("^#.*$" . 'p4-form-comment-face)
-    ("^[^ \t:]+:" . 'p4-form-keyword-face)))
+    ("^[^ \t\n:]+:" . 'p4-form-keyword-face)))
 
 (defvar p4-form-mode-map
   (let ((map (make-sparse-keymap)))
@@ -3679,7 +3682,7 @@ file, but a prefix argument reverses this."
                    0))))
     (move-to-column old-column)
     (if (and (< (current-column) colon)
-             (re-search-forward "[^ ][ :]" nil t))
+             (re-search-forward "[^ \n][ :]" nil t))
         (goto-char (match-beginning 0)))))
 
 (defun p4-next-change-rev-line ()
@@ -3687,7 +3690,7 @@ file, but a prefix argument reverses this."
   (interactive)
   (let ((c (current-column)))
     (move-to-column 1)
-    (re-search-forward "^ *[0-9]+ +[0-9]+[^:]+:" nil "")
+    (re-search-forward "^ *[0-9]+ +[0-9]+[^:\n]+:" nil "")
     (p4-moveto-print-rev-column c)))
 
 (defun p4-prev-change-rev-line ()
@@ -3696,7 +3699,7 @@ file, but a prefix argument reverses this."
   (let ((c (current-column)))
     (forward-line -1)
     (move-to-column 32)
-    (re-search-backward "^ *[0-9]+ +[0-9]+[^:]*:" nil "")
+    (re-search-backward "^ *[0-9]+ +[0-9]+[^:\n]*:" nil "")
     (p4-moveto-print-rev-column c)))
 
 (defun p4-toggle-line-wrap ()
