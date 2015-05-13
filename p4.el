@@ -61,6 +61,7 @@
 (require 'comint) ; comint-check-proc
 (require 'dired) ; dired-get-filename
 (require 'diff-mode) ; diff-font-lock-defaults, ...
+(require 'easy-mmode) ; define-minor-mode
 (require 'ps-print) ; ps-print-ensure-fontified
 (eval-when-compile (require 'cl)) ; defstruct, loop, dolist, lexical-let, ...
 
@@ -144,11 +145,6 @@ P4PORT and P4USER and set from the current Perforce settings."
                 (const :tag "Fetch password from Python keyring.\n\n\tFor each Perforce account, run:\n\t    python -c \"import keyring,sys;keyring.set_password(*sys.argv[1:])\" \\\n\t        P4PORT P4USER PASSWORD\n\treplacing P4PORT with the Perforce server setting, P4PORT with the\n\tPerforce user name, and PASSWORD with the password.\n"
                        "python -c \"import keyring, sys; print(keyring.get_password(*sys.argv[1:3]))\" \"$P4PORT\" \"$P4USER\"")
                 (string :tag "Run custom command"))
-  :group 'p4)
-
-(defcustom p4-mode-hook nil
-  "Hook run by `p4-mode'."
-  :type 'hook
   :group 'p4)
 
 (defcustom p4-form-mode-hook nil
@@ -288,7 +284,6 @@ flags."
   :group 'p4-faces)
 
 ;; Local variables in all buffers.
-(defvar p4-mode nil "P4 minor mode.")
 (defvar p4-vc-revision nil
   "Perforce revision to which this buffer's file is synced.")
 (defvar p4-vc-status nil
@@ -341,7 +336,7 @@ commit command.")
 ;; Local variables in P4 depot buffers.
 (defvar p4-default-directory nil "Original value of default-directory.")
 
-(dolist (var '(p4-mode p4-vc-revision p4-vc-status
+(dolist (var '(p4-vc-revision p4-vc-status
                p4-process-args p4-process-callback
                p4-process-buffers p4-process-pending
                p4-process-after-show p4-process-auto-login
@@ -355,8 +350,17 @@ commit command.")
 
 ;;; P4 minor mode:
 
-(add-to-list 'minor-mode-alist '(p4-mode p4-mode))
-
+(define-minor-mode p4-mode
+  "Minor mode for files in a Perforce client."
+  ;; `p4-update-mode' below sets the variable `p4-mode' to a description of the
+  ;; file's Perforce state.
+  :lighter p4-mode
+  :keymap (make-sparse-keymap)
+  ;; The variable `p4-mode' is reused as lighter, but the default code emitted
+  ;; by `define-minor-mode' sets it to nil or t.  Reset it if it's a string so
+  ;; that it actually shows up in the modeline.
+  (when (stringp p4-mode)
+    (setq p4-mode arg)))
 
 ;;; Keymap:
 
@@ -1356,9 +1360,8 @@ number is not known or not applicable."
                         (depot (format " P4:%s" status))
                         ((add branch edit integrate) (format " P4:%s" status))
                         (t nil))))
-        (when (and new-mode (not p4-mode))
-          (run-hooks 'p4-mode-hook))
-        (setq p4-mode new-mode)))))
+        (unless (string-equal p4-mode new-mode)
+          (p4-mode new-mode))))))
 
 (defun p4-update-status-sentinel-2 (process message)
   (let ((buffer (process-buffer process)))
