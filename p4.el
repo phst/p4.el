@@ -14,7 +14,7 @@
 ;;; Commentary:
 
 ;; p4.el integrates the Perforce software version management system
-;; into Emacs. It is designed for users who are familiar with Perforce
+;; into Emacs.  It is designed for users who are familiar with Perforce
 ;; and want to access it from Emacs: it provides Emacs interfaces that
 ;; map directly to Perforce commands.
 
@@ -105,8 +105,7 @@ Set to:
   :group 'p4)
 
 (defcustom p4-auto-refresh t
-  "If non-NIL, automatically refresh files under Perforce control
-when they change on disk."
+  "If non-NIL, automatically refresh files under Perforce control when they change on disk."
   :type 'boolean
   :group 'p4)
 
@@ -136,7 +135,7 @@ when they change on disk."
   "Action to take when Perforce needs a password.
 If NIL, prompt the user to enter password.
 Otherwise, this is a string containing a shell command that
-prints the password. This command is run in an environment where
+prints the password.  This command is run in an environment where
 P4PORT and P4USER and set from the current Perforce settings."
   :type '(radio (const :tag "Prompt user to enter password." nil)
                 (const :tag "Fetch password from OS X Keychain.\n\n\tFor each Perforce account, use Keychain Access to create an\n\tapplication password with \"Account\" the Perforce user name\n\t(P4USER) and \"Where\" the Perforce server setting (P4PORT).\n"
@@ -173,21 +172,18 @@ P4PORT and P4USER and set from the current Perforce settings."
 
 ;; This is also set by the command `p4-toggle-vc-mode'.
 (defcustom p4-do-find-file t
-  "If non-NIL, display Perforce revision and opened status in the
-mode line."
+  "If non-NIL, display Perforce revision and opened status in the mode line."
   :type 'boolean
   :group 'p4)
 
 (defcustom p4-cleanup-time 600
-  "Time in seconds after which a cache of information from the
-Perforce server becomes stale."
+  "Time in seconds after which a cache of information from the Perforce server becomes stale."
   :type 'integer
   :group 'p4)
 
 (defcustom p4-my-clients nil
-  "The list of Perforce clients that the function
-`p4-set-client-name' will complete on, or NIL if it should
-complete on all clients."
+  "The list of Perforce clients that the function `p4-set-client-name' will complete on.
+If NIL it should complete on all clients."
   :type '(repeat (string))
   :group 'p4)
 
@@ -292,7 +288,7 @@ flags."
 (defvar p4-vc-revision nil
   "Perforce revision to which this buffer's file is synced.")
 (defvar p4-vc-status nil
-  "Perforce status for this buffer. A symbol:
+  "Perforce status for this buffer.  A symbol:
 NIL if file is not known to be under control of Perforce.
 `add' if file is opened for add.
 `branch' if file opened for branch.
@@ -315,20 +311,21 @@ NIL if file is not known to be under control of Perforce.
 (defvar p4-process-pending nil
   "Pending status update structure being updated here.")
 (defvar p4-process-pop-up-output nil
-  "Function that returns non-NIL to display output in a pop-up
-window, or NIL to display it in the echo area.")
+  "Function that returns non-NIL to display output in a pop-up window, or NIL to display it in the echo area.")
 (defvar p4-process-synchronous nil
   "If non-NIL, run p4 command synchronously.")
 
 ;; Local variables in P4 Form buffers.
 (defvar p4-form-commit-command nil
-  "p4 command to run when committing this form.")
+  "P4 command to run when committing this form.")
 (defvar p4-form-commit-success-callback nil
-  "Function run if commit succeeds. It receives two arguments:
+  "Function run if commit succeeds.
+It receives two arguments:
 the commit command and the buffer containing the output from the
 commit command.")
 (defvar p4-form-commit-failure-callback nil
-  "Function run if commit fails. It receives two arguments:
+  "Function run if commit fails.
+It receives two arguments:
 the commit command and the buffer containing the output from the
 commit command.")
 (defvar p4-form-head-text
@@ -339,7 +336,7 @@ commit command.")
   "Text added to top of generic form.")
 
 ;; Local variables in P4 depot buffers.
-(defvar p4-default-directory nil "Original value of default-directory.")
+(defvar p4-default-directory nil "Original value of `default-directory'.")
 
 (dolist (var '(p4-mode p4-vc-revision p4-vc-status
                p4-process-args p4-process-callback
@@ -413,8 +410,9 @@ commit command.")
 (fset 'p4-prefix-map p4-prefix-map)
 
 (defun p4-update-global-key-prefix (symbol value)
-  "Update the P4 global key prefix based on the
-`p4-global-key-prefix' user setting."
+  "Update the P4 global key prefix based on the `p4-global-key-prefix' user setting.
+SYMBOL is a symbol for the variable to set, and VALUE is the
+desired variable value."
   (set symbol value)
   (let ((map (current-global-map)))
     ;; Remove old binding(s).
@@ -500,7 +498,7 @@ commit command.")
     ["--" nil nil]
     ["About P4" p4-version t]
     )
-  "The P4 menu definition")
+  "The P4 menu definition.")
 
 (easy-menu-change '("tools") "P4" p4-menu-spec "Version Control")
 
@@ -508,8 +506,9 @@ commit command.")
 ;;; Macros (must be defined before use if compilation is to work)
 
 (defmacro p4-with-temp-buffer (args &rest body)
-  "Run p4 ARGS in a temporary buffer, place point at the start of
-the output, and evaluate BODY if the command completed successfully."
+  "Run p4 ARGS in a temporary buffer and evaluate BODY.
+Place point at the start of the output, and evaluate BODY if the
+command completed successfully."
   `(let ((dir (or p4-default-directory default-directory)))
      (with-temp-buffer
        (cd dir)
@@ -518,8 +517,9 @@ the output, and evaluate BODY if the command completed successfully."
 (put 'p4-with-temp-buffer 'lisp-indent-function 1)
 
 (defmacro p4-with-set-output (&rest body)
-  "Run p4 set in a temporary buffer, place point at the start of
-the output, and evaluate BODY if the command completed successfully."
+  "Run p4 set in a temporary buffer and evaluate BODY.
+Place point at the start of the output, and evaluate BODY if the
+command completed successfully."
   ;; Can't use `p4-with-temp-buffer' for this, because that would lead
   ;; to infinite recursion via `p4-coding-system'.
   `(let ((dir (or p4-default-directory default-directory)))
@@ -532,8 +532,7 @@ the output, and evaluate BODY if the command completed successfully."
 (put 'p4-with-set-output 'lisp-indent-function 0)
 
 (defmacro p4-with-coding-system (&rest body)
-  "Evaluate BODY with coding-system-for-read and -write set to
-the result of `p4-coding-system'."
+  "Evaluate BODY with `coding-system-for-read' and `coding-system-for-write' set to the result of `p4-coding-system'."
   `(let* ((coding (p4-coding-system))
           (coding-system-for-read coding)
           (coding-system-for-write coding))
@@ -550,8 +549,7 @@ the result of `p4-coding-system'."
   (message "Emacs-P4 Integration version %s" p4-version))
 
 (defun p4-current-setting (var &optional default)
-  "Return the current Perforce client setting for VAR, or DEFAULT
-if there is no setting."
+  "Return the current Perforce client setting for VAR, or DEFAULT if there is no setting."
   (or (p4-with-set-output
         (let ((re (format "^%s=\\(\\S-+\\)" (regexp-quote var))))
           (when (re-search-forward re nil t)
@@ -559,8 +557,7 @@ if there is no setting."
       default))
 
 (defun p4-current-environment ()
-  "Return `process-environment' updated with the current Perforce
-client settings."
+  "Return `process-environment' updated with the current Perforce client settings."
   (append
    (p4-with-set-output
      (loop while (re-search-forward "^P4[A-Z]+=\\S-+" nil t)
@@ -646,7 +643,7 @@ client settings."
 (defun p4-set-client-name (value)
   "Set the P4CLIENT environment variable to VALUE.
 If the setting `p4-set-my-clients' is non-NIL, complete on those
-clients only. If `p4-strict-complete' is non-NIL, require an
+clients only.  If `p4-strict-complete' is non-NIL, require an
 exact match."
   (interactive
    (list
@@ -672,18 +669,23 @@ exact match."
 ;;; File handler:
 
 (defun p4-dirs-and-attributes (dir)
+  "Return directories with attributes in DIR."
   (let ((now (current-time)))
     (loop for f in (p4-output-matches (list "dirs" (concat dir "*"))
                                       "^//[^ \n]+$")
           collect (list f t 0 0 0 now now now 0 "dr--r--r--" nil 0 0))))
 
 (defun p4-files-and-attributes (dir)
+  "Return files with attributes in DIR."
   (let ((now (current-time)))
     (loop for f in (p4-output-matches (list "files" (concat dir "*"))
                                       "^\\(//[^#\n]+#[1-9][0-9]*\\) - " 1)
           collect (list f nil 0 0 0 now now now 0 "-r--r--r--" nil 0 0))))
 
 (defun p4-directory-files-and-attributes (dir &optional full match nosort id-format)
+  "Return files and directories in DIR.
+DIR is a depot path.  FULL, MATCH, NOSORT, and ID-FORMAT are
+interpreted as with `directory-files-and-attributes'."
   (let* ((from (length dir))
          (files (loop for f in (append (p4-dirs-and-attributes dir)
                                        (p4-files-and-attributes dir))
@@ -694,13 +696,17 @@ exact match."
       (sort files 'file-attributes-lessp))))
 
 (defun p4-file-exists-p (filename)
+  "Return t if FILENAME exists in the depot."
   (or (p4-file-directory-p filename)
       (p4-with-temp-buffer (list "-s" "files" filename) (looking-at "info:"))))
 
 (defun p4-file-directory-p (filename)
+  "Return t if FILENAME is a directory in the depot."
   (p4-with-temp-buffer (list "-s" "dirs" filename) (looking-at "info:")))
 
 (defun p4-file-name-sans-versions (filename &optional keep-backup-version)
+  "Return FILENAME without version number.
+Ignore KEEP-BACKUP-VERSION."
   (string-match "\\(.*?\\)\\(?:#[1-9][0-9]*\\|@[^#@ \t\n]+\\)?$" filename)
   (match-string 1 filename))
 
